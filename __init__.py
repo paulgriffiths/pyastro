@@ -10,8 +10,11 @@ http://www.gnu.org/licenses/
 
 """
 
-from astro.core import Mercury, Venus, Earth, Mars, Jupiter, Saturn
-from astro.core import Uranus, Neptune, Pluto, Sun, Moon
-from astro.core import julian_date, UTC, kepler, _normalize_degrees
-from astro.core import zodiac_sign, rasc_to_zodiac
-from astro.core import rasc_string, decl_string, rec_to_sph
+from pyastro.functions import julian_date, UTC, kepler
+from pyastro.functions import zodiac_sign, rasc_to_zodiac
+from pyastro.functions import rasc_string, decl_string, rec_to_sph
+from pyastro.functions import J2000, SphCoords, RectCoords
+
+from pyastro.core import Mercury, Venus, Earth, Mars, Jupiter, Saturn
+from pyastro.core import Uranus, Neptune, Pluto, Sun, Moon
+from pyastro.core import positions

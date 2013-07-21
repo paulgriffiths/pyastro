@@ -1,4 +1,26 @@
-"""Astronomical module.
+"""Planet classes for astronomical module.
+
+Library Release 1.0
+
+Copyright 2013 Paul Griffiths
+Email: mail@paulgriffiths.net
+
+Distributed under the terms of the GNU General Public License.
+http://www.gnu.org/licenses/
+
+The calculations for all planets, excluding the moon, are valid the 
+time period 1800 through 2050, and are subject to the following
+approximate errors:
+
+  -- Right Ascension, +/- 50 arcsecs for all planets except Jupiter and
+     Saturn, +/- 400 arcsecs for Jupiter, +/- 600 arcsecs for Saturn
+  -- Declination, +/- 8 arcsecs for all planets except Jupiter and
+     Saturn, +/- 10 arcsecs for Jupiter, +/- 25 arcsecs for Saturn
+  -- Distance, +/- 25 km for the inner planets, and +/- between 200
+     and 1,500 km for Jupiter through Pluto
+
+Right ascension and declination calculations for the moon are accurate to
+within approximately 4 arcminutes. 
 
 Some of the moon astronomical functions here adapted from
 Brett Hamilton's Astro-MoonPhase Perl module, available at the time
@@ -9,17 +31,28 @@ Other planetary data and mathematical formulae obtained from NASA's
 Jet Propulsion Laboratory at:
   http://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf
 
-Much useful information and assistance also gained from:
+Much useful information and assistance also gained from
+Keith Burnett's pages at:
   http://www.stargazing.net/kepler/ellipse.html
+  http://www.stargazing.net/kepler/moon2.html
+
+and from Paul Schlyter's page at:
+  http://www.stjarnhimlen.se/comp/ppcomp.html
 
 """
 
 
 from __future__ import division
+from __future__ import print_function
 
-from datetime import datetime, tzinfo, timedelta
-from math import radians, degrees, sin, cos, atan, sqrt, floor
+from datetime import datetime
+from math import radians, sin, cos, sqrt, atan2, hypot
 from collections import namedtuple
+
+from pyastro.functions import J2000, RectCoords, _SECONDS_IN_A_DAY
+from pyastro.functions import _get_current_utc_datetime
+from pyastro import julian_date, rec_to_sph, rasc_string, decl_string
+from pyastro import kepler, zodiac_sign, UTC, rasc_to_zodiac
 
 
 # Non-public named tuples
@@ -29,14 +62,6 @@ from collections import namedtuple
 #
 # pylint: disable=C0103
 
-_ZodiacInfo = namedtuple("_ZodiacInfo", ["longitude",
-                                         "sign_index",
-                                         "sign_name",
-                                         "sign_short_name",
-                                         "degrees",
-                                         "minutes",
-                                         "seconds"])
-
 _OrbitalElements = namedtuple("_OrbitalElements", ["semi_major_axis",
                                                    "eccentricity",
                                                    "inclination",
@@ -44,25 +69,17 @@ _OrbitalElements = namedtuple("_OrbitalElements", ["semi_major_axis",
                                                    "longitude_perihelion",
                                                    "longitude_asc_node"])
 
-_HMS = namedtuple("_HMS", ["hours", "minutes", "seconds"])
-
-_DMS = namedtuple("_DMS", ["degrees", "minutes", "seconds"])
-
-SphCoords = namedtuple("SphCoords", ["right_ascension",
-                                     "declination",
-                                     "distance"])
-
-RectCoords = namedtuple("RectCoords", ["x", "y", "z"])
-
 # pylint: enable=C0103
 
 
 # Non-public constants
 
-# NOTE: Data for Keplerian elements obtained from:
+# Keplerian element data for all planets excluding the moon, based
+# on a J2000 epoch and with adjustment factors per Julian Century.
+# Data obtained from:
 #   http://ssd.jpl.nasa.gov/txt/aprx_pos_planets.pdf
 
-_OE_J2000 = {
+_OEJ2000 = {
     "sun": _OrbitalElements(0, 0, 0, 0, 0, 0),
     "mercury": _OrbitalElements(0.387009927, 0.20563593, 7.00497902,
                                 252.25032350, 77.45779628, 48.33076593),
@@ -106,6 +123,27 @@ _OE_CENT = {
                               145.20780515, -0.04062942, -0.01183482)
 }
 
+# Keplerian element data for the moon and the sun (when used for
+# the moon calculations) based on a December 31, 1999 epoch with
+# adjustment factors per day.
+# Data obtained from:
+#   http://www.stjarnhimlen.se/comp/ppcomp.html
+
+_OE_Y2000 = {
+    "moon": _OrbitalElements(60.2666, 0.0549, 5.1454, 198.5516,
+                             83.1862, 125.1228),
+    "sun": _OrbitalElements(1, 0.016709, 0, 278.9874, -77.0596, 0)
+}
+
+_OE_DAY = {
+    "moon": _OrbitalElements(0, 0, 0, 13.1763964649, 0.111403514,
+                             -0.0529538083),
+    "sun": _OrbitalElements(0, -0.000000001151, 0, 0.98564735200,
+                            0.00004709350, 0)
+}
+
+# Other non-public constants
+
 _ZODIAC_SIGNS = [
     "Aries", "Taurus", "Gemini", "Cancer",
     "Leo", "Virgo", "Libra", "Scorpio",
@@ -116,277 +154,6 @@ _ZODIAC_SIGNS_SHORT = [
     "AR", "TA", "GE", "CN", "LE", "VI",
     "LI", "SC", "SG", "CP", "AQ", "PI"
 ]
-
-_J2000 = 2451545.0
-_SECONDS_IN_A_DAY = 86400.0
-
-
-# UTC class needed for datetime functions
-
-class UTC(tzinfo):
-
-    """UTC tzinfo class, needed for constructing datetime objects."""
-
-    # Disable pylint message about unused arguments
-    # pylint: disable=W0613
-
-    def utcoffset(self, dtime):
-        return timedelta(0)
-
-    def tzname(self, dtime):
-        return "UTC"
-
-    def dst(self, dtime):
-        return timedelta(0)
-
-    # pylint: enable=W0613
-
-
-# Non-public functions
-
-def _normalize_degrees(angle):
-
-    """Normalizes a given angle in degrees so that
-    it returns 0 <= angle < 360.
-
-    Arguments:
-    angle -- the angle, in degrees, to normalize
-
-    Returns: the normalized angle.
-
-    """
-
-    return angle - 360 * floor(angle / 360.0)
-
-
-def _deg_to_hms(degs):
-
-    """Converts the supplied angle in degrees to
-    a string formatted as hours, minutes and seconds.
-
-    Arguments:
-    degs -- the degrees to format
-
-    """
-
-    degs = _normalize_degrees(degs)
-    total_seconds = degs / 360.0 * _SECONDS_IN_A_DAY
-    hours = int(total_seconds / 3600)
-    minutes = int((total_seconds - hours * 3600) / 60)
-    seconds = int(round(total_seconds - hours * 3600 - minutes * 60))
-
-    return _HMS(hours, minutes, seconds)
-
-
-def _deg_to_dms(degs):
-
-    """Converts the supplied angle in degrees to a
-    a string formatted as degrees, minutes and seconds.
-
-    Arguments:
-    degs -- the degrees to format
-
-    """
-
-    total_seconds = degs * 3600
-    degs = int(total_seconds / 3600)
-    minutes = int((total_seconds - degs * 3600) / 60)
-    seconds = int(round(total_seconds - degs * 3600 - minutes * 60))
-
-    return _DMS(degs, minutes, seconds)
-
-
-def _get_zodiac_info(rasc):
-
-    """Returns a populated _ZodiacInfo named tuple for
-    a given right ascension, in degrees.
-
-    Arguments:
-    rasc -- a right ascension, in degrees
-
-    Returns: an appropriate _ZodiacInfo named tuple
-
-    """
-
-    dms = _deg_to_dms(rasc)
-    sign_index = dms.degrees // 30
-    sign_short_name = _ZODIAC_SIGNS_SHORT[sign_index]
-    sign_name = _ZODIAC_SIGNS[sign_index]
-
-    return _ZodiacInfo(rasc, sign_index, sign_name, sign_short_name,
-                       dms.degrees % 30, dms.minutes, dms.seconds)
-
-
-def _get_current_utc_datetime():
-
-    """Returns an aware datetime object for the current UTC time."""
-
-    dti = datetime.utcnow()
-    return datetime(dti.year, dti.month, dti.day,
-                    dti.hour, dti.minute, dti.second,
-                    dti.microsecond, UTC())
-
-
-# Public functions
-
-def julian_date(dtime=None):
-
-    """Returns a Julian Date for a given datetime object,
-    or for the current time if one is not provided.
-
-    Arguments:
-    dtime -- a datetime object containing the desired time
-
-    Returns: the corresponding Julian Date
-
-    """
-
-    # Get datetime object for our selected Julian Date epoch,
-    # and for the current datetime if one has not been specified.
-
-    epoch_dt = datetime(2000, 1, 1, 12, 0, 0, 0, UTC())
-    if dtime is None:
-        dtime = _get_current_utc_datetime()
-
-    # Get a timedelta object between the desired time
-    # and our selected Julian Date epoch, and express
-    # the timedelta in fractional days.
-
-    timediff = dtime - epoch_dt
-    days_diff = timediff.days + timediff.seconds / _SECONDS_IN_A_DAY
-
-    # Return the fractional days plus the epoch
-
-    return days_diff + _J2000
-
-
-def kepler(m_anom, eccentricity):
-
-    """Solves Kepler's equation for the eccentric anomaly
-    using Newton's method.
-
-    Arguments:
-    m_anom -- mean anomaly in radians
-    eccentricity -- eccentricity of the ellipse
-
-    Returns: eccentric anomaly in radians.
-
-    """
-
-    desired_accuracy = 1e-6
-    e_anom = m_anom
-
-    while True:
-        diff = e_anom - eccentricity * sin(e_anom) - m_anom
-        e_anom -= diff / (1 - eccentricity * cos(e_anom))
-        if abs(diff) <= desired_accuracy:
-            break
-    return e_anom
-
-
-def rec_to_sph(rcds):
-
-    """Transforms the provided rectangular coordinates into spherical
-    coordinates.
-
-    Arguments:
-    rcds -- a RectCoords named tuple containing the rectangular coordinates:
-      x -- rectangular x-axis coordinate (to vernal equinox)
-      y -- rectangular y-axis coordinate (90 degrees east in
-           the plane of the equator)
-      z -- rectangular z-axis coodinrate (to north pole)
-
-    Returns: a SphCoords named tuple consisting of:
-      rasc -- right ascension, in degrees
-      decl -- declination, in degrees
-      dist -- distance, in astronomical units
-
-    """
-
-    rasc = degrees(atan(rcds.y / rcds.x))
-    if rcds.x < 0:
-        rasc += 180
-    elif rcds.y < 0:
-        rasc += 360
-    decl = degrees(atan(rcds.z / sqrt(rcds.x ** 2 + rcds.y ** 2)))
-    dist = sqrt(rcds.x ** 2 + rcds.y ** 2 + rcds.z ** 2)
-
-    return SphCoords(rasc, decl, dist)
-
-
-def zodiac_sign(rasc, short=False):
-
-    """Returns a string containing the zodiac sign of
-    a specified right ascension given in degrees.
-
-    Arguments:
-    rasc -- the right ascension to convert
-    short -- set to True to show short two letter abbreviations
-    rather than the full sign name, e.g. AR instead of Aries
-
-    """
-
-    zinfo = _get_zodiac_info(rasc)
-    if short:
-        return zinfo.sign_short_name
-    else:
-        return zinfo.sign_name
-
-
-def rasc_to_zodiac(rasc, seconds=False):
-
-    """Returns a string showing a right ascension in terms
-    of the zodiac, e.g. 20CN15, meaning the 15th minute of the
-    20th degree in the sign of Cancer.
-
-    Arguments:
-    rasc -- the right ascension to convert
-    seconds -- set to True to also show the seconds, e.g. 20CN15'33
-
-    """
-
-    zinfo = _get_zodiac_info(rasc)
-    if seconds:
-        second_string = "'{0:02}".format(zinfo.seconds)
-    else:
-        second_string = ""
-    return "{0:02}{1}{2:02}{3}".format(zinfo.degrees,
-                                       zinfo.sign_short_name,
-                                       zinfo.minutes,
-                                       second_string)
-
-
-def rasc_string(rasc):
-
-    """Converts the supplied right ascension, in degrees, to
-    a string formatted as hours, minutes and seconds.
-
-    Arguments:
-    rasc -- the right ascension to format
-
-    """
-
-    hms = _deg_to_hms(rasc)
-
-    return "{0:02}h {1:02}m {2:02}s".format(hms.hours,
-                                            hms.minutes, hms.seconds)
-
-
-def decl_string(decl):
-
-    """Converts the supplied declination, in degrees, to
-    a string formatted as degrees, minutes and seconds.
-
-    Arguments:
-    decl -- the declination to format
-
-    """
-
-    dms = _deg_to_dms(decl)
-
-    return "{0:+03}d {1:02}m {2:02}s".format(dms.degrees,
-                                             abs(dms.minutes),
-                                             abs(dms.seconds))
 
 
 # Classes
@@ -405,6 +172,10 @@ class _Planet(object):
         if self._dtime is None:
             self._dtime = _get_current_utc_datetime()
 
+        # Initialize _rhc for moon calculations
+
+        self._rhc = 0
+
         # Get and store Keplerian elements
 
         self._oes = self._get_orbital_elements()
@@ -418,7 +189,7 @@ class _Planet(object):
 
         # Calculate the number of Julian centuries since J2000
 
-        jdc = (julian_date(self._dtime) - _J2000) / 36525
+        jdc = (julian_date(self._dtime) - J2000) / 36525
 
         # Calculate and return Keplerian elements
 
@@ -429,7 +200,7 @@ class _Planet(object):
 
         tmp = []
         for elem in range(6):
-            tmp.append(_OE_J2000[self._pname][elem] +
+            tmp.append(_OEJ2000[self._pname][elem] +
                        _OE_CENT[self._pname][elem] * jdc)
 
         # pylint: enable=E1101
@@ -465,6 +236,7 @@ class _Planet(object):
 
         xhc = oea * (cos(e_anom) - oee)
         yhc = oea * sqrt(1 - oee ** 2) * sin(e_anom)
+        self._rhc = hypot(xhc, yhc)
 
         # Step 5: compute ecliptic coordinates in J2000 ecliptic plane
 
@@ -634,7 +406,7 @@ class Earth(_Planet):
     def geo_equ_coords(self):
 
         """Override this method to simply return zeros, since
-        any heliocentric coordinates for Earth will be zero.
+        any geocentric coordinates for Earth will be zero.
 
         """
 
@@ -734,48 +506,195 @@ class Sun(_Planet):
         return RectCoords(0, 0, 0)
 
 
-class Moon(object):
+class Moon(_Planet):
 
     """Moon class."""
 
-    def __init__(self):
+    def __init__(self, dtime=None):
 
         """Initializer."""
 
-        self._m_long_epoch = 64.975464
-        self._m_long_perigree = 349.383063
-        self._m_long_node = 151.950429
-        self._inclination = 5.145396
-        self._eccentricity = 0.054900
-        self._ang_size = 0.5181
-        self._sm_axis = 384401.0
-        self._parallax = 0.9507
+        self._pname = "moon"
+        _Planet.__init__(self, dtime)
+
+    def _get_orbital_elements(self):
+
+        """Returns the Keplerian elements for the datetime
+        specified at object construction.
+
+        Overriden for moon class, as the moon calculations use a
+        different epoch and adjustment factor for calculating
+        the Keplerian elements than is used for the other planets.
+
+        """
+
+        # Calculate the number of days since Y2000
+
+        epoch_dt = datetime(1999, 12, 31, 0, 0, 0, 0, UTC())
+        timediff = self._dtime - epoch_dt
+        days = timediff.days + timediff.seconds / _SECONDS_IN_A_DAY
+
+        # Calculate and return Keplerian elements
+
+        # Disable pylint warning for abstract _Planet class
+        # having no _pname member.
+        #
+        # pylint: disable=E1101
+
+        tmp = []
+        for elem in range(6):
+            tmp.append(_OE_Y2000[self._pname][elem] +
+                       _OE_DAY[self._pname][elem] * days)
+
+        # pylint: enable=E1101
+
+        return _OrbitalElements(*tmp)            # pylint: disable=W0142
+
+    def geo_ecl_coords(self):
+
+        """Returns a three-element tuple containing the
+        geocentric ecliptic rectangular coordinates of the planet.
+
+        Overriden for Moon class to adjust for perturbations. Note that
+        for the Moon class, helio_ecl_coords() does not, in fact, return
+        the heliocentric ecliptic rectangular coordinates, but the
+        geocentric ecliptic rectangular coordinates unadjusted for
+        perturbations.
+
+        """
+
+        hec = self.helio_ecl_coords()
+
+        # Get latitude, longitude and rhc
+
+        lon = atan2(hec.y, hec.x)
+        lat = atan2(hec.z, hypot(hec.x, hec.y))
+        rhc = self._rhc
+
+        # Get selected Keplerian elements for the sun and the moon
+
+        m_oel = radians(self._oes.mean_longitude)
+        m_oew = radians(self._oes.longitude_perihelion)
+        m_oeo = radians(self._oes.longitude_asc_node)
+
+        # Disable pylint message about access to _get_orbital_elements()
+        # pylint: disable=W0212
+
+        soe = _SunForMoon(self._dtime)._get_orbital_elements()
+        s_oel = radians(soe.mean_longitude)
+        s_oew = radians(soe.longitude_perihelion)
+
+        # pylint: enable=W0212
+
+        # Calculate mean anomalies for the moon and the sun
+
+        m_m_anom = m_oel - m_oew
+        s_m_anom = s_oel - s_oew
+
+        # Calculate mean elongation and argument of latitude of the moon
+
+        m_mel = m_oel - s_oel
+        m_arl = m_oel - m_oeo
+
+        # Adjust for longitude perturbations
+
+        dlon = -1.274 * sin(m_m_anom - 2 * m_mel)
+        dlon += 0.658 * sin(2 * m_mel)
+        dlon -= 0.186 * sin(s_m_anom)
+        dlon -= 0.059 * sin(2 * m_m_anom - 2 * m_mel)
+        dlon -= 0.057 * sin(m_m_anom - 2 * m_mel + s_m_anom)
+        dlon += 0.053 * sin(m_m_anom + 2 * m_mel)
+        dlon += 0.046 * sin(2 * m_mel - s_m_anom)
+        dlon += 0.041 * sin(m_m_anom - s_m_anom)
+        dlon -= 0.035 * sin(m_mel)
+        dlon -= 0.031 * sin(m_m_anom + s_m_anom)
+        dlon -= 0.015 * sin(2 * m_arl - 2 * m_mel)
+        dlon += 0.011 * sin(m_m_anom - 4 * m_mel)
+        lon = radians(dlon) + lon
+
+        # Adjust for latitude perturbations
+
+        dlat = -0.173 * sin(m_arl - 2 * m_mel)
+        dlat -= 0.055 * sin(m_m_anom - m_arl - 2 * m_mel)
+        dlat -= 0.046 * sin(m_m_anom + m_arl - 2 * m_mel)
+        dlat += 0.033 * sin(m_arl + 2 * m_mel)
+        dlat += 0.017 * sin(2 * m_m_anom + m_arl)
+        lat = radians(dlat) + lat
+
+        # Adjust for rhc pertubations
+
+        rhc = rhc - 0.58 * cos(m_m_anom - 2 * m_mel)
+        rhc -= 0.46 * cos(2 * m_mel)
+
+        # Return cartersian coordinates of geocentric lunar position
+
+        xgc = rhc * cos(lon) * cos(lat)
+        ygc = rhc * sin(lon) * cos(lat)
+        zgc = rhc * sin(lat)
+
+        return RectCoords(xgc, ygc, zgc)
 
 
-# main function
+class _SunForMoon(Moon):
 
-def main():
+    """Sun class for moon.
 
-    """Main function."""
+    This class is provided purely to enable the calculations in
+    the Moon class to calculate orbital elements for the Sun using
+    the same methodology as used for its own orbital elements
+    (i.e. using Dec 31, 1999 as an Epoch rather than J2000, and
+    calculating the elements using a daily adjustment factor,
+    rather than a Julian Century adjustment factor.
 
-    print "Current planetary data:\n"
-    print "PLANET    R.ASCENSION   DECLINATION  DIST (AU) ZODIAC ZODIAC SIGN"
-    print "=======   ===========  ============= ========= ====== ==========="
+    """
+
+    # Disable pylint messages about calling _Planet.__init__()
+    # rather than Moon.__init__(), this is deliberate to avoid
+    # overwriting self._pname which would happen if Moon.__init__()
+    # was called. Moon.__init__() does nothing other than set its
+    # own self._pname and call _Planet.__init__(), so no functionality
+    # is lost.
+    #
+    # pylint: disable=W0233
+    # pylint: disable=W0231
+
+    def __init__(self, dtime=None):
+
+        """Initializer."""
+
+        self._pname = "sun"
+        _Planet.__init__(self, dtime)
+
+    # pylint: enable=W0233
+    # pylint: enable=W0231
+
+
+# Functions
+
+def positions(dtime=None):
+
+    """Prints information for all supported planets for a
+    specified datetime.
+
+    """
+
+    if dtime is None:
+        dtime = _get_current_utc_datetime()
+
+    print("Current planetary data:\n")
+    print("PLANET    R.ASCENSION   DECLINATION  DIST (AU)* ZODIAC ZODIAC SIGN")
+    print("=======   ===========  ============= ========== ====== ===========")
 
     for planet in [Sun, Mercury, Venus, Mars, Jupiter,
-                   Saturn, Uranus, Neptune, Pluto]:
-        plnt = planet()
-        print "{0:8}: {1}, {2}, {3:9.6f} {4} {5}".format(
+                   Saturn, Uranus, Neptune, Pluto, Moon]:
+        plnt = planet(dtime)
+        print("{0:8}: {1}, {2}, {3:10.7f} {4} {5}".format(
                 plnt.name().capitalize(),
                 plnt.right_ascension(formatted=True),
                 plnt.declination(formatted=True),
                 plnt.distance(),
                 plnt.right_ascension(zodiac=True),
                 plnt.zodiac_sign()
-        )
+        ))
 
-
-# Direct entry point
-
-if __name__ == "__main__":
-    main()
+    print("\n* Distance for the moon given in Earth radii.")
