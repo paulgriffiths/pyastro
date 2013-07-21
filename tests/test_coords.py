@@ -11,9 +11,9 @@
 import unittest
 from datetime import datetime
 
-from astro import Mars, Earth, Venus, Mercury, Jupiter, Saturn
-from astro import Uranus, Neptune, Pluto, Sun, UTC
-from astro import rasc_string, decl_string, rec_to_sph
+from pyastro import Mars, Earth, Venus, Mercury, Jupiter, Saturn
+from pyastro import Uranus, Neptune, Pluto, Sun, Moon, UTC
+from pyastro import rasc_string, decl_string, rec_to_sph
 
 
 class TestSequenceFunctions(unittest.TestCase):
@@ -322,11 +322,52 @@ class TestSequenceFunctions(unittest.TestCase):
         test_dist = 1.01446426179846
 
         sun = Sun(dtm)
-        rasc, decl, dist = rec_to_sph(sun.geo_equ_coords())
-
-        rasc_s = rasc_string(rasc)
-        decl_s = decl_string(decl)
+        rasc_s = sun.right_ascension(formatted=True)
+        decl_s = sun.declination(formatted=True)
+        dist = sun.distance()
 
         self.assertTrue(rasc_s in test_rasc)
         self.assertEqual(decl_s[:8], test_decl)
         self.assertAlmostEqual(dist, test_dist, places=1)
+
+    def test_moon_equ_geo_coords(self):
+
+        """Test geo_equ_coords() method for the Moon."""
+
+        # Test numbers taken from:
+        #   http://www.stargazing.net/kepler/moon2.html
+
+        dtm = datetime(1998, 8, 10, 0, 0, 0, 0, UTC())
+
+        # Right ascension accurate to within two seconds
+        # Declination accurate to within one minute
+        # Distance not assessed in this test
+
+        test_rasc = ["22h 56m 47s", "22h 56m 48s", "22h 56m 49s"]
+        test_decl = "-07d 47m"
+
+        moon = Moon(dtm)
+        rasc_s = moon.right_ascension(formatted=True)
+        decl_s = moon.declination(formatted=True)
+
+        self.assertTrue(rasc_s in test_rasc)
+        self.assertEqual(decl_s[:8], test_decl)
+
+        # Test numbers taken from:
+        #   http://ssd.jpl.nasa.gov/horizons
+
+        dtm = datetime(2013, 6, 8, 17, 45, 0, 0, UTC())
+
+        # Right ascension accurate to within two minutes
+        # Declination accurate to within two minutes
+        # Distance not assessed in this test
+
+        test_rasc = ["05h 10m", "05h 11m", "05h 12m"]
+        test_decl = ["+20d 10m", "+20d 11m", "+20d 12m"]
+
+        moon = Moon(dtm)
+        rasc_s = moon.right_ascension(formatted=True)
+        decl_s = moon.declination(formatted=True)
+
+        self.assertTrue(rasc_s[:7] in test_rasc)
+        self.assertTrue(decl_s[:8] in test_decl)

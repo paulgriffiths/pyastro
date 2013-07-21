@@ -11,7 +11,7 @@
 import unittest
 from math import radians
 
-from astro import kepler
+from pyastro import kepler
 
 
 class TestSequenceFunctions(unittest.TestCase):

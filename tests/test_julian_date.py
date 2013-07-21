@@ -11,7 +11,7 @@
 import unittest
 from datetime import datetime
 
-from astro import julian_date, UTC
+from pyastro import julian_date, UTC
 
 
 class TestSequenceFunctions(unittest.TestCase):
