@@ -18,25 +18,23 @@ Who maintains it?
 
 The Latest Version
 ------------------
-Details of the latest version can be found on the GitHub project page at:
-* <https://github.com/paulgriffiths/pyastro>.
+Details of the latest version can be found on the GitHub project page at
+<https://github.com/paulgriffiths/pyastro>.
 
 Documentation
 -------------
-Up-to-date documentation can be found at:
-* <https://github.com/paulgriffiths/pyastro/wiki>
+Up-to-date documentation can be found at
+<https://github.com/paulgriffiths/pyastro/wiki>
 
 Installation
 ------------
-The easiest way to install **pyastro** is via the Python Package Index at:
-* <https://pypi.python.org/pypi/pyastro>
+The easiest way to install **pyastro** is via the Python Package Index at
+<https://pypi.python.org/pypi/pyastro>
 
-If you have setuptools/distribute installed, the commands:
-* `easy_install pyastro`
-* `pip install nose`
-should work. Otherwise, download the source package from the Python Package
-index, unzip/untar the source package, cd to the new directory, and:
-* `python setup.py install`
+If you have setuptools/distribute installed, the commands `easy_install pyastro`
+or `pip install nose` should work. Otherwise, download the source package from
+the Python Package index, unzip/untar the source package, cd to the new
+directory, and `python setup.py install`.
 
 Licensing
 ---------
