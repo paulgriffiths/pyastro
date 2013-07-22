@@ -30,6 +30,7 @@ Installation
 ------------
 The easiest way to install **pyastro** is via the Python Package Index at:
 * <https://pypi.python.org/pypi/pyastro>
+
 If you have setuptools/distribute installed, the commands:
 * easy_install pyastro
 * pip install nose
