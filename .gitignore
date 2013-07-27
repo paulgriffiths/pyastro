@@ -4,4 +4,5 @@
 # Setup
 setup/build
 setup/dist
+setup/pyastro
 setup/MANIFEST
