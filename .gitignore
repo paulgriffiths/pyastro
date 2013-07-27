@@ -1,2 +1,7 @@
 *.pyc
 *~
+
+# Setup
+setup/build
+setup/dist
+setup/MANIFEST
