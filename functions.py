@@ -1,6 +1,6 @@
 """General functions for astronomical module.
 
-Library Release 1.0
+Library Release 1.1
 
 Copyright 2013 Paul Griffiths
 Email: mail@paulgriffiths.net

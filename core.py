@@ -1,6 +1,6 @@
 """Planet classes for astronomical module.
 
-Library Release 1.0
+Library Release 1.1
 
 Copyright 2013 Paul Griffiths
 Email: mail@paulgriffiths.net
@@ -49,10 +49,10 @@ from datetime import datetime
 from math import radians, sin, cos, sqrt, atan2, hypot
 from collections import namedtuple
 
-from pyastro.functions import J2000, RectCoords, _SECONDS_IN_A_DAY
-from pyastro.functions import _get_current_utc_datetime
-from pyastro import julian_date, rec_to_sph, rasc_string, decl_string
-from pyastro import kepler, zodiac_sign, UTC, rasc_to_zodiac
+from functions import J2000, RectCoords, _SECONDS_IN_A_DAY
+from functions import _get_current_utc_datetime
+from functions import julian_date, rec_to_sph, rasc_string, decl_string
+from functions import kepler, zodiac_sign, UTC, rasc_to_zodiac
 
 
 # Non-public named tuples
