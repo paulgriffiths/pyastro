@@ -10,7 +10,7 @@
 
 import unittest
 
-from pyastro.functions import _normalize_degrees
+from ..functions import _normalize_degrees
 
 
 class TestSequenceFunctions(unittest.TestCase):

@@ -11,9 +11,9 @@
 import unittest
 from datetime import datetime
 
-from pyastro import Mars, Earth, Venus, Mercury, Jupiter, Saturn
-from pyastro import Uranus, Neptune, Pluto, Sun, Moon, UTC
-from pyastro import rasc_string, decl_string, rec_to_sph
+from ..core import Mars, Earth, Venus, Mercury, Jupiter, Saturn
+from ..core import Uranus, Neptune, Pluto, Sun, Moon, UTC
+from ..functions import rasc_string, decl_string, rec_to_sph
 
 
 class TestSequenceFunctions(unittest.TestCase):

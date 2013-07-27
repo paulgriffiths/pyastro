@@ -10,7 +10,7 @@
 
 import unittest
 
-from pyastro import zodiac_sign, rasc_to_zodiac
+from ..functions import zodiac_sign, rasc_to_zodiac
 
 
 class TestSequenceFunctions(unittest.TestCase):
